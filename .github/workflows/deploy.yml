@@ -64,27 +64,28 @@ jobs:
             frontend
           docker push "$REGISTRY/frontend:$IMAGE_TAG"
 
-      - name: Set up Terraform
-        uses: hashicorp/setup-terraform@v3
-        with:
-          terraform_version: 1.5.7
-
-      - name: Terraform init
-        working-directory: infra
-        run: terraform init
-
-      - name: Terraform apply
-        working-directory: infra
-        env:
-          TF_VAR_project_id: ${{ secrets.GCP_PROJECT_ID }}
-          TF_VAR_region: ${{ secrets.GCP_REGION }}
-          TF_VAR_environment: production
-          TF_VAR_clerk_secret_key: ${{ secrets.CLERK_SECRET_KEY }}
-          TF_VAR_clerk_publishable_key: ${{ secrets.CLERK_PUBLISHABLE_KEY }}
-          TF_VAR_clerk_jwks_url: ${{ secrets.CLERK_JWKS_URL }}
-          TF_VAR_openai_api_key: ${{ secrets.OPENAI_API_KEY }}
+      - name: Deploy backend image
         run: |
-          terraform apply -auto-approve \
-            -var="backend_image=$REGISTRY/backend:$IMAGE_TAG" \
-            -var="worker_image=$REGISTRY/worker:$IMAGE_TAG" \
-            -var="frontend_image=$REGISTRY/frontend:$IMAGE_TAG"
+          gcloud run services update zeropath-api \
+            --region "$GCP_REGION" \
+            --image "$REGISTRY/backend:$IMAGE_TAG"
+
+      - name: Deploy worker image
+        run: |
+          gcloud run services update zeropath-worker \
+            --region "$GCP_REGION" \
+            --image "$REGISTRY/worker:$IMAGE_TAG"
+
+      - name: Deploy frontend image
+        run: |
+          gcloud run services update zeropath-frontend \
+            --region "$GCP_REGION" \
+            --image "$REGISTRY/frontend:$IMAGE_TAG"
+
+      - name: Ensure Pub/Sub pushes to worker /scan endpoint
+        run: |
+          WORKER_URL=$(gcloud run services describe zeropath-worker \
+            --region "$GCP_REGION" \
+            --format='value(status.url)')
+          gcloud pubsub subscriptions update scan-jobs-worker-push \
+            --push-endpoint="$WORKER_URL/scan"
