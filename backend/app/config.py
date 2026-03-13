@@ -16,6 +16,9 @@ class Settings(BaseSettings):
     gcp_project_id: str = ""
     pubsub_topic_id: str = "scan-jobs"
 
+    # HTTP / CORS
+    cors_allowed_origins: str = "http://localhost:5173"
+
     # General
     environment: str = "development"
     log_level: str = "info"

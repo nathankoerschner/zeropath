@@ -26,9 +26,12 @@ resource "google_cloud_run_v2_service" "backend" {
   template {
     service_account = google_service_account.backend.email
 
-    vpc_access {
-      connector = google_vpc_access_connector.connector.id
-      egress    = "PRIVATE_RANGES_ONLY"
+    volumes {
+      name = "cloudsql"
+
+      cloud_sql_instance {
+        instances = [google_sql_database_instance.postgres.connection_name]
+      }
     }
 
     containers {
@@ -36,6 +39,11 @@ resource "google_cloud_run_v2_service" "backend" {
 
       ports {
         container_port = 8000
+      }
+
+      volume_mounts {
+        name       = "cloudsql"
+        mount_path = "/cloudsql"
       }
 
       env {
@@ -61,6 +69,14 @@ resource "google_cloud_run_v2_service" "backend" {
       env {
         name  = "CLERK_JWKS_URL"
         value = var.clerk_jwks_url
+      }
+
+      env {
+        name  = "CORS_ALLOWED_ORIGINS"
+        value = join(",", [
+          "http://localhost:5173",
+          google_cloud_run_v2_service.frontend.uri,
+        ])
       }
 
       env {
@@ -118,9 +134,12 @@ resource "google_cloud_run_v2_service" "worker" {
   template {
     service_account = google_service_account.worker.email
 
-    vpc_access {
-      connector = google_vpc_access_connector.connector.id
-      egress    = "PRIVATE_RANGES_ONLY"
+    volumes {
+      name = "cloudsql"
+
+      cloud_sql_instance {
+        instances = [google_sql_database_instance.postgres.connection_name]
+      }
     }
 
     containers {
@@ -128,6 +147,11 @@ resource "google_cloud_run_v2_service" "worker" {
 
       ports {
         container_port = 8001
+      }
+
+      volume_mounts {
+        name       = "cloudsql"
+        mount_path = "/cloudsql"
       }
 
       env {
@@ -227,7 +251,7 @@ resource "google_secret_manager_secret" "db_url" {
 
 resource "google_secret_manager_secret_version" "db_url" {
   secret      = google_secret_manager_secret.db_url.id
-  secret_data = "postgresql://${google_sql_user.app.name}:${random_password.db_password.result}@${google_sql_database_instance.postgres.private_ip_address}:5432/${var.db_name}"
+  secret_data = "postgresql://${google_sql_user.app.name}:${random_password.db_password.result}@/${var.db_name}?host=/cloudsql/${google_sql_database_instance.postgres.connection_name}"
 }
 
 resource "google_secret_manager_secret_iam_member" "backend_db_url" {
@@ -240,4 +264,16 @@ resource "google_secret_manager_secret_iam_member" "worker_db_url" {
   secret_id = google_secret_manager_secret.db_url.id
   role      = "roles/secretmanager.secretAccessor"
   member    = "serviceAccount:${google_service_account.worker.email}"
+}
+
+resource "google_project_iam_member" "backend_cloudsql_client" {
+  project = var.project_id
+  role    = "roles/cloudsql.client"
+  member  = "serviceAccount:${google_service_account.backend.email}"
+}
+
+resource "google_project_iam_member" "worker_cloudsql_client" {
+  project = var.project_id
+  role    = "roles/cloudsql.client"
+  member  = "serviceAccount:${google_service_account.worker.email}"
 }

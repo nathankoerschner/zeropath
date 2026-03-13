@@ -160,7 +160,7 @@ gcloud run services logs read zeropath-worker --region us-central1
 
 ## Updating Services
 
-To deploy a new version:
+To deploy a new version manually:
 
 ```bash
 # Build and push with new tag
@@ -171,6 +171,38 @@ make docker-push TAG=v1.1.0
 # Then apply
 make tf-apply
 ```
+
+## GitHub Actions push-to-deploy
+
+A workflow is included at `.github/workflows/deploy.yml`.
+
+It deploys on:
+
+- push to `master`
+- manual workflow dispatch
+
+The workflow:
+
+1. Authenticates to GCP
+2. Builds backend and worker images with Cloud Build
+3. Builds the frontend image with Cloud Build using the deployed backend URL and Clerk publishable key
+4. Runs `terraform apply` with image tags and secret values passed through `TF_VAR_*`
+
+### Required GitHub repository secrets
+
+- `GCP_PROJECT_ID`
+- `GCP_REGION`
+- `GCP_SA_KEY`
+- `CLERK_SECRET_KEY`
+- `CLERK_PUBLISHABLE_KEY`
+- `CLERK_JWKS_URL`
+- `OPENAI_API_KEY`
+
+### Notes
+
+- `GCP_SA_KEY` should be a JSON service account key with permissions for Cloud Build, Cloud Run, Artifact Registry, Secret Manager, Pub/Sub, and Terraform-managed resources.
+- A more secure follow-up is to replace `GCP_SA_KEY` with GitHub OIDC + Workload Identity Federation.
+- Push-to-deploy will only work once this repo is actually hosted on GitHub and those secrets are configured there.
 
 ## Cost Considerations
 
