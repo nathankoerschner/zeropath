@@ -1,0 +1,20 @@
+# Copy to terraform.tfvars and fill in real values
+
+project_id  = "your-gcp-project-id"
+region      = "us-central1"
+environment = "production"
+
+# Docker images (set after first build)
+backend_image  = "us-central1-docker.pkg.dev/your-project/zeropath/backend:latest"
+worker_image   = "us-central1-docker.pkg.dev/your-project/zeropath/worker:latest"
+frontend_image = "us-central1-docker.pkg.dev/your-project/zeropath/frontend:latest"
+
+# Database
+db_tier = "db-f1-micro"
+db_name = "zeropath"
+
+# Secrets
+clerk_secret_key      = ""
+clerk_publishable_key = ""
+clerk_jwks_url        = "https://your-clerk-domain/.well-known/jwks.json"
+openai_api_key        = ""

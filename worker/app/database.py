@@ -1,0 +1,22 @@
+"""Database session factory for the worker service."""
+
+from sqlalchemy import create_engine
+from sqlalchemy.orm import DeclarativeBase, sessionmaker
+
+from app.config import settings
+
+engine = create_engine(settings.database_url, echo=(settings.environment == "development"))
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+
+class Base(DeclarativeBase):
+    pass
+
+
+def get_db():
+    """Yields a database session."""
+    db = SessionLocal()
+    try:
+        yield db
+    finally:
+        db.close()
