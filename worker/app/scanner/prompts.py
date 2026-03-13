@@ -77,6 +77,7 @@ At each step, return ONE JSON object with this exact schema:
   "final_verdict": "definitive_issue" | "definitive_no_issue" | "iteration_cap_reached",
   "findings": [
     {
+      "file_path": "<repo-relative path where the terminal line exists>",
       "vulnerability_type": "<string>",
       "severity": "low" | "medium" | "high" | "critical",
       "line_number": <integer>,
@@ -90,6 +91,7 @@ At each step, return ONE JSON object with this exact schema:
 Response rules:
 - If status is "continue", final_verdict MUST be "iteration_cap_reached" and findings MUST be [].
 - If status is "final" and final_verdict is "definitive_issue", include one or more concrete findings.
+- Each finding's `file_path` must be the repo-relative file that contains the exact terminal line for that finding.
 - If status is "final" and final_verdict is "definitive_no_issue" or "iteration_cap_reached", findings MUST be [].
 - Keep requests tightly scoped and high-signal.
 - Request at most 3 items per iteration.
@@ -120,6 +122,7 @@ Additional repository context gathered so far:
 {supplemental_context}
 
 If more code is needed, request it using requests[].
+When returning findings, set `file_path` to the repo-relative file that contains the reported `line_number`.
 If this is the final allowed iteration, you MUST return status="final".
 """
 

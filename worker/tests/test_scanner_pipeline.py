@@ -48,6 +48,7 @@ class TestExtractJson:
 class TestValidateFinding:
     def test_valid_finding(self):
         raw = {
+            "file_path": "app.py",
             "vulnerability_type": "SQL Injection",
             "severity": "high",
             "line_number": 42,
@@ -55,8 +56,9 @@ class TestValidateFinding:
             "explanation": "Attacker can inject SQL",
             "code_snippet": "cursor.execute(f'SELECT * FROM {user_input}')",
         }
-        f = _validate_finding(raw, "app.py")
+        f = _validate_finding(raw, "app.py", {"app.py"})
         assert f is not None
+        assert f.file_path == "app.py"
         assert f.vulnerability_type == "SQL Injection"
         assert f.severity == "high"
         assert f.line_number == 42
@@ -69,7 +71,7 @@ class TestValidateFinding:
             "description": "desc",
             "explanation": "exp",
         }
-        f = _validate_finding(raw, "app.py")
+        f = _validate_finding(raw, "app.py", {"app.py"})
         assert f is not None
         assert f.severity == "medium"
 
@@ -81,7 +83,7 @@ class TestValidateFinding:
             "description": "desc",
             "explanation": "exp",
         }
-        f = _validate_finding(raw, "app.py")
+        f = _validate_finding(raw, "app.py", {"app.py"})
         assert f is not None
         assert f.line_number == 1
 
@@ -116,7 +118,7 @@ class TestRunStage2:
     @patch("app.scanner.pipeline._list_python_files")
     @patch("app.scanner.pipeline.call_llm_json")
     def test_returns_findings(self, mock_call, mock_list):
-        mock_list.return_value = ["app.py"]
+        mock_list.return_value = ["app.py", "db.py"]
         mock_call.return_value = {
             "status": "final",
             "summary": "Confirmed SQL injection sink.",
@@ -125,6 +127,7 @@ class TestRunStage2:
             "final_verdict": "definitive_issue",
             "findings": [
                 {
+                    "file_path": "db.py",
                     "vulnerability_type": "SQL Injection",
                     "severity": "high",
                     "line_number": 10,
@@ -137,6 +140,7 @@ class TestRunStage2:
         outcome = _run_stage2(Path("/tmp/clone"), "app.py", "code")
         assert outcome.verdict == "definitive_issue"
         assert len(outcome.findings) == 1
+        assert outcome.findings[0].file_path == "db.py"
         assert outcome.findings[0].vulnerability_type == "SQL Injection"
 
     @patch("app.scanner.pipeline._resolve_stage2_requests")
@@ -185,6 +189,22 @@ class TestRunStage2:
         mock_call.side_effect = LLMParseError("bad")
         with pytest.raises(LLMParseError):
             _run_stage2(Path("/tmp/clone"), "app.py", "code")
+
+    def test_unknown_finding_file_path_falls_back_to_original_file(self):
+        raw = {
+            "file_path": "missing.py",
+            "vulnerability_type": "XSS",
+            "severity": "high",
+            "line_number": 33,
+            "description": "desc",
+            "explanation": "exp",
+        }
+
+        finding = _validate_finding(raw, "app.py", {"app.py", "helpers.py"})
+
+        assert finding is not None
+        assert finding.file_path == "app.py"
+        assert finding.line_number == 33
 
 
 # ─── _process_file integration tests ────────────────────────────────────

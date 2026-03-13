@@ -12,9 +12,10 @@ resource "google_sql_database_instance" "postgres" {
     disk_autoresize   = true
 
     ip_configuration {
-      ipv4_enabled = false
+      # Enable public IP so Cloud Run can use the Cloud SQL connector/socket path.
+      ipv4_enabled = true
 
-      # Allow Cloud Run via private networking
+      # Retain private networking as well.
       private_network = google_compute_network.vpc.id
     }
 
@@ -66,12 +67,3 @@ resource "google_service_networking_connection" "private_vpc" {
   reserved_peering_ranges = [google_compute_global_address.private_ip.name]
 }
 
-# ---- VPC Connector for Cloud Run → Cloud SQL ----
-
-resource "google_vpc_access_connector" "connector" {
-  name          = "zeropath-connector"
-  region        = var.region
-  network       = google_compute_network.vpc.name
-  ip_cidr_range = "10.8.0.0/28"
-  depends_on    = [google_project_service.apis]
-}

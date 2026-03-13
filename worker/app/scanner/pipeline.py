@@ -136,7 +136,11 @@ _FINAL_VERDICTS = {"definitive_issue", "definitive_no_issue", "iteration_cap_rea
 _REQUEST_KINDS = {"symbol_definition", "symbol_usage", "file"}
 
 
-def _validate_finding(raw: dict[str, Any], file_path: str) -> FindingResult | None:
+def _validate_finding(
+    raw: dict[str, Any],
+    default_file_path: str,
+    known_file_paths: set[str] | None = None,
+) -> FindingResult | None:
     """Validate and normalise a single finding dict from stage 2 output."""
     try:
         severity = str(raw.get("severity", "")).lower()
@@ -147,8 +151,17 @@ def _validate_finding(raw: dict[str, Any], file_path: str) -> FindingResult | No
         if line_number < 1:
             line_number = 1
 
+        finding_file_path = str(raw.get("file_path", default_file_path)).strip() or default_file_path
+        if known_file_paths is not None and finding_file_path not in known_file_paths:
+            logger.warning(
+                "Stage 2 returned unknown file_path '%s'; falling back to %s",
+                finding_file_path,
+                default_file_path,
+            )
+            finding_file_path = default_file_path
+
         return FindingResult(
-            file_path=file_path,
+            file_path=finding_file_path,
             vulnerability_type=str(raw.get("vulnerability_type", "Unknown")),
             severity=severity,
             line_number=line_number,
@@ -157,7 +170,7 @@ def _validate_finding(raw: dict[str, Any], file_path: str) -> FindingResult | No
             code_snippet=raw.get("code_snippet"),
         )
     except (TypeError, ValueError) as exc:
-        logger.warning("Invalid finding in %s: %s", file_path, exc)
+        logger.warning("Invalid finding in %s: %s", default_file_path, exc)
         return None
 
 
@@ -339,7 +352,11 @@ def _format_supplemental_context(snippets: list[ContextSnippet]) -> str:
     return "\n\n".join(blocks)
 
 
-def _parse_stage2_outcome(raw: dict[str, Any], file_path: str) -> Stage2Outcome:
+def _parse_stage2_outcome(
+    raw: dict[str, Any],
+    file_path: str,
+    known_file_paths: set[str],
+) -> Stage2Outcome:
     status = str(raw.get("status", "")).strip().lower()
     summary = str(raw.get("summary", "")).strip()
     verdict = str(raw.get("final_verdict", "")).strip().lower()
@@ -356,7 +373,7 @@ def _parse_stage2_outcome(raw: dict[str, Any], file_path: str) -> Stage2Outcome:
     if verdict == "definitive_issue" and isinstance(raw_findings, list):
         for raw_finding in raw_findings:
             if isinstance(raw_finding, dict):
-                finding = _validate_finding(raw_finding, file_path)
+                finding = _validate_finding(raw_finding, file_path, known_file_paths)
                 if finding is not None:
                     findings.append(finding)
 
@@ -366,7 +383,10 @@ def _parse_stage2_outcome(raw: dict[str, Any], file_path: str) -> Stage2Outcome:
 def _run_stage2(clone_path: Path, file_path: str, content: str) -> Stage2Outcome:
     """Run iterative repo-aware security analysis on a suspicious file."""
     numbered = _add_line_numbers(content)
-    repo_index = _format_repo_index(_list_python_files(clone_path))
+    repo_paths = _list_python_files(clone_path)
+    known_file_paths = set(repo_paths)
+    known_file_paths.add(file_path)
+    repo_index = _format_repo_index(repo_paths)
     gathered_context: list[ContextSnippet] = []
     history: list[str] = []
 
@@ -383,7 +403,7 @@ def _run_stage2(clone_path: Path, file_path: str, content: str) -> Stage2Outcome
             supplemental_context=_format_supplemental_context(gathered_context),
         )
         result = call_llm_json(STAGE2_SYSTEM_PROMPT, user_prompt)
-        outcome = _parse_stage2_outcome(result, file_path)
+        outcome = _parse_stage2_outcome(result, file_path, known_file_paths)
 
         if outcome.verdict != "continue":
             return outcome
