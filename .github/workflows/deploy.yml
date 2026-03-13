@@ -45,21 +45,24 @@ jobs:
             --format='value(status.url)')
           echo "backend_url=$BACKEND_URL" >> "$GITHUB_OUTPUT"
 
-      - name: Build backend image with Cloud Build
+      - name: Build and push backend image
         run: |
-          gcloud builds submit backend \
-            --tag "$REGISTRY/backend:$IMAGE_TAG"
+          docker build -t "$REGISTRY/backend:$IMAGE_TAG" backend
+          docker push "$REGISTRY/backend:$IMAGE_TAG"
 
-      - name: Build worker image with Cloud Build
+      - name: Build and push worker image
         run: |
-          gcloud builds submit worker \
-            --tag "$REGISTRY/worker:$IMAGE_TAG"
+          docker build -t "$REGISTRY/worker:$IMAGE_TAG" worker
+          docker push "$REGISTRY/worker:$IMAGE_TAG"
 
-      - name: Build frontend image with Cloud Build
+      - name: Build and push frontend image
         run: |
-          gcloud builds submit frontend \
-            --config cloudbuild.frontend.yaml \
-            --substitutions=_IMAGE="$REGISTRY/frontend:$IMAGE_TAG",_VITE_CLERK_PUBLISHABLE_KEY="${{ secrets.CLERK_PUBLISHABLE_KEY }}",_VITE_API_BASE_URL="${{ steps.backend_url.outputs.backend_url }}"
+          docker build \
+            -t "$REGISTRY/frontend:$IMAGE_TAG" \
+            --build-arg VITE_CLERK_PUBLISHABLE_KEY="${{ secrets.CLERK_PUBLISHABLE_KEY }}" \
+            --build-arg VITE_API_BASE_URL="${{ steps.backend_url.outputs.backend_url }}" \
+            frontend
+          docker push "$REGISTRY/frontend:$IMAGE_TAG"
 
       - name: Set up Terraform
         uses: hashicorp/setup-terraform@v3
